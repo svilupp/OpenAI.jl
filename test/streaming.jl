@@ -351,4 +351,156 @@ end
             end
         end
     end
+
+    # Test edge cases
+    @testset "Edge Cases" begin
+        # Test very large responses
+        @testset "Large Response" begin
+            # Create a large response with 1000 chunks
+            large_responses = vcat(
+                [Dict("role" => "assistant")],
+                [Dict("content" => "chunk$i ") for i in 1:1000]
+            )
+
+            server = create_streaming_server(large_responses)
+            try
+                chunks = []
+                provider = OpenAIProvider(
+                    api_key="test",
+                    base_url="http://127.0.0.1:8444/v1"
+                )
+
+                response = create_chat(
+                    provider,
+                    "gpt-4",
+                    [Dict("role" => "user", "content" => "Test large response")];
+                    streamcallback = chunk -> push!(chunks, chunk)
+                )
+
+                # Test large response handling
+                @test response.status == 200
+                @test length(response.response) == length(large_responses)
+                @test length(chunks) == length(large_responses)
+
+                # Verify content of random chunks
+                for i in rand(1:1000, 5)
+                    delta = response.response[i+1]["choices"][1]["delta"]
+                    @test delta["content"] == "chunk$i "
+                end
+            finally
+                close(server)
+            end
+        end
+
+        # Test rapid message sequences
+        @testset "Rapid Sequences" begin
+            # Create rapid sequence responses with no delay
+            responses = [Dict("content" => "rapid$i") for i in 1:10]
+
+            server = create_streaming_server(responses)
+            try
+                chunks = []
+                provider = OpenAIProvider(
+                    api_key="test",
+                    base_url="http://127.0.0.1:8444/v1"
+                )
+
+                response = create_chat(
+                    provider,
+                    "gpt-4",
+                    [Dict("role" => "user", "content" => "Test rapid")];
+                    streamcallback = chunk -> push!(chunks, chunk)
+                )
+
+                # Test rapid sequence handling
+                @test response.status == 200
+                @test length(response.response) == length(responses)
+                @test length(chunks) == length(responses)
+            finally
+                close(server)
+            end
+        end
+
+        # Test unicode content
+        @testset "Unicode Content" begin
+            responses = [
+                Dict("role" => "assistant"),
+                Dict("content" => "Hello 👋"),
+                Dict("content" => " World 🌍"),
+                Dict("content" => " ♥️"),
+                Dict("content" => " 汉字"),
+                Dict("content" => " ひらがな")
+            ]
+
+            server = create_streaming_server(responses)
+            try
+                chunks = []
+                provider = OpenAIProvider(
+                    api_key="test",
+                    base_url="http://127.0.0.1:8444/v1"
+                )
+
+                response = create_chat(
+                    provider,
+                    "gpt-4",
+                    [Dict("role" => "user", "content" => "Test unicode")];
+                    streamcallback = chunk -> push!(chunks, chunk)
+                )
+
+                # Test unicode handling
+                @test response.status == 200
+                @test length(response.response) == length(responses)
+
+                # Verify unicode content
+                deltas = map(r -> r["choices"][1]["delta"], response.response)
+                @test deltas[2]["content"] == "Hello 👋"
+                @test deltas[3]["content"] == " World 🌍"
+                @test deltas[4]["content"] == " ♥️"
+                @test deltas[5]["content"] == " 汉字"
+                @test deltas[6]["content"] == " ひらがな"
+            finally
+                close(server)
+            end
+        end
+
+        # Test empty messages
+        @testset "Empty Messages" begin
+            responses = [
+                Dict("role" => "assistant"),
+                Dict("content" => ""),  # Empty content
+                Dict(),  # Empty delta
+                Dict("content" => ""),  # Another empty content
+                Dict("content" => "Not empty")
+            ]
+
+            server = create_streaming_server(responses)
+            try
+                chunks = []
+                provider = OpenAIProvider(
+                    api_key="test",
+                    base_url="http://127.0.0.1:8444/v1"
+                )
+
+                response = create_chat(
+                    provider,
+                    "gpt-4",
+                    [Dict("role" => "user", "content" => "Test empty messages")];
+                    streamcallback = chunk -> push!(chunks, chunk)
+                )
+
+                # Test empty message handling
+                @test response.status == 200
+                @test length(response.response) == length(responses)
+
+                # Verify empty content handling
+                deltas = map(r -> r["choices"][1]["delta"], response.response)
+                @test haskey(deltas[2], "content") && deltas[2]["content"] == ""
+                @test isempty(deltas[3])
+                @test haskey(deltas[4], "content") && deltas[4]["content"] == ""
+                @test haskey(deltas[5], "content") && deltas[5]["content"] == "Not empty"
+            finally
+                close(server)
+            end
+        end
+    end
 end
