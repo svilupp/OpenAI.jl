@@ -503,4 +503,209 @@ end
             end
         end
     end
+
+    # Test different sink types
+    @testset "Different Sink Types" begin
+        responses = [
+            Dict("role" => "assistant"),
+            Dict("content" => "Test"),
+            Dict("content" => " different"),
+            Dict("content" => " sinks")
+        ]
+
+        # Test Vector sink
+        @testset "Vector Sink" begin
+            server = create_streaming_server(responses)
+            try
+                chunks = Vector{String}()
+                callback = StreamCallback(
+                    out = chunk -> push!(chunks, chunk.content),
+                    flavor = OpenAIStream()
+                )
+
+                provider = OpenAIProvider(
+                    api_key="test",
+                    base_url="http://127.0.0.1:8444/v1"
+                )
+
+                response = create_chat(
+                    provider,
+                    "gpt-4",
+                    [Dict("role" => "user", "content" => "Test vector sink")];
+                    streamcallback = callback
+                )
+
+                # Verify vector sink
+                @test length(chunks) == 3  # content chunks only
+                @test chunks == ["Test", " different", " sinks"]
+            finally
+                close(server)
+            end
+        end
+
+        # Test String sink
+        @testset "String Sink" begin
+            server = create_streaming_server(responses)
+            try
+                result = Ref{String}("")
+                callback = StreamCallback(
+                    out = chunk -> result[] *= chunk.content,
+                    flavor = OpenAIStream()
+                )
+
+                provider = OpenAIProvider(
+                    api_key="test",
+                    base_url="http://127.0.0.1:8444/v1"
+                )
+
+                response = create_chat(
+                    provider,
+                    "gpt-4",
+                    [Dict("role" => "user", "content" => "Test string sink")];
+                    streamcallback = callback
+                )
+
+                # Verify string sink
+                @test result[] == "Test different sinks"
+            finally
+                close(server)
+            end
+        end
+
+        # Test custom sink type
+        @testset "Custom Sink" begin
+            server = create_streaming_server(responses)
+            try
+                mutable struct CustomSink
+                    chunks::Vector{String}
+                    total_length::Int
+                    CustomSink() = new(String[], 0)
+                end
+
+                sink = CustomSink()
+                callback = StreamCallback(
+                    out = chunk -> begin
+                        if haskey(chunk.delta, "content")
+                            push!(sink.chunks, chunk.content)
+                            sink.total_length += length(chunk.content)
+                        end
+                    end,
+                    flavor = OpenAIStream()
+                )
+
+                provider = OpenAIProvider(
+                    api_key="test",
+                    base_url="http://127.0.0.1:8444/v1"
+                )
+
+                response = create_chat(
+                    provider,
+                    "gpt-4",
+                    [Dict("role" => "user", "content" => "Test custom sink")];
+                    streamcallback = callback
+                )
+
+                # Verify custom sink
+                @test length(sink.chunks) == 3
+                @test sink.total_length == sum(length.(sink.chunks))
+                @test join(sink.chunks) == "Test different sinks"
+            finally
+                close(server)
+            end
+        end
+    end
+
+    # Test backward compatibility
+    @testset "Backward Compatibility" begin
+        responses = [
+            Dict("role" => "assistant"),
+            Dict("content" => "Testing"),
+            Dict("content" => " backward"),
+            Dict("content" => " compatibility")
+        ]
+
+        # Test legacy function callback
+        @testset "Legacy Function Callback" begin
+            server = create_streaming_server(responses)
+            try
+                chunks = String[]
+                legacy_callback(chunk) = push!(chunks, chunk["choices"][1]["delta"]["content"])
+
+                provider = OpenAIProvider(
+                    api_key="test",
+                    base_url="http://127.0.0.1:8444/v1"
+                )
+
+                response = create_chat(
+                    provider,
+                    "gpt-4",
+                    [Dict("role" => "user", "content" => "Test legacy callback")];
+                    streamcallback = legacy_callback
+                )
+
+                # Verify legacy callback
+                @test length(chunks) == 3  # content chunks only
+                @test join(chunks) == "Testing backward compatibility"
+            finally
+                close(server)
+            end
+        end
+
+        # Test legacy IOBuffer
+        @testset "Legacy IOBuffer" begin
+            server = create_streaming_server(responses)
+            try
+                buffer = IOBuffer()
+
+                provider = OpenAIProvider(
+                    api_key="test",
+                    base_url="http://127.0.0.1:8444/v1"
+                )
+
+                response = create_chat(
+                    provider,
+                    "gpt-4",
+                    [Dict("role" => "user", "content" => "Test legacy buffer")];
+                    streamcallback = buffer
+                )
+
+                # Verify legacy buffer
+                content = String(take!(buffer))
+                @test contains(content, "Testing backward compatibility")
+            finally
+                close(server)
+            end
+        end
+
+        # Test legacy direct string handling
+        @testset "Legacy String Handling" begin
+            server = create_streaming_server(responses)
+            try
+                result = ""
+                legacy_string_handler(chunk) = begin
+                    delta = chunk["choices"][1]["delta"]
+                    if haskey(delta, "content")
+                        result *= delta["content"]
+                    end
+                end
+
+                provider = OpenAIProvider(
+                    api_key="test",
+                    base_url="http://127.0.0.1:8444/v1"
+                )
+
+                response = create_chat(
+                    provider,
+                    "gpt-4",
+                    [Dict("role" => "user", "content" => "Test legacy string")];
+                    streamcallback = legacy_string_handler
+                )
+
+                # Verify legacy string handling
+                @test result == "Testing backward compatibility"
+            finally
+                close(server)
+            end
+        end
+    end
 end

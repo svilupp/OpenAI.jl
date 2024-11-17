@@ -4,7 +4,7 @@
 - [x] Test basic function callback streaming
 - [x] Test IO streaming to buffer
 - [x] Test StreamCallback object streaming
-- [ ] Test backward compatibility with existing streamcallback usage
+- [x] Test backward compatibility with existing streamcallback usage
 
 ## Toy Streaming Server
 - [x] Create mock OpenAI streaming server
@@ -16,7 +16,7 @@
 - [x] Test OpenAIStream flavor parsing
 - [x] Test custom chunk processing
 - [x] Test response building from chunks
-- [ ] Test different sink types
+- [x] Test different sink types
 
 ## Error Handling
 - [x] Test connection errors during streaming
@@ -31,7 +31,7 @@
 - [x] Test empty response handling
 
 ## Edge Cases
-- [ ] Test very large responses
-- [ ] Test rapid message sequences
-- [ ] Test unicode content
-- [ ] Test empty messages
+- [x] Test very large responses
+- [x] Test rapid message sequences
+- [x] Test unicode content
+- [x] Test empty messages
