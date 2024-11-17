@@ -7,11 +7,13 @@ version = "0.10.1"
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 HTTP = "cd3eb016-35fb-5094-929b-558a96fad6f3"
 JSON3 = "0f8b85d8-7281-11e9-16c2-39a750bddbf1"
+StreamCallbacks = "c7e14b3c-d701-4e11-a899-b3d7637fd44d"
 
 [compat]
 Dates = "1"
 HTTP = "1"
 JSON3 = "1"
+StreamCallbacks = "0.1"
 julia = "1"
 
 [extras]
