@@ -245,4 +245,110 @@ end
             end
         end
     end
+
+    # Test response building
+    @testset "Response Building" begin
+        # Test OpenAIResponse construction and delta merging
+        @testset "Response Construction" begin
+            responses = [
+                Dict("role" => "assistant"),
+                Dict("content" => "Hello"),
+                Dict("content" => " World"),
+                Dict("content" => "!")
+            ]
+
+            server = create_streaming_server(responses)
+            try
+                chunks = []
+                provider = OpenAIProvider(
+                    api_key="test",
+                    base_url="http://127.0.0.1:8444/v1"
+                )
+
+                response = create_chat(
+                    provider,
+                    "gpt-4",
+                    [Dict("role" => "user", "content" => "Test response")];
+                    streamcallback = chunk -> push!(chunks, chunk)
+                )
+
+                # Test response structure
+                @test response.status == 200
+                @test length(response.response) == length(responses)
+
+                # Test delta merging
+                deltas = map(r -> r["choices"][1]["delta"], response.response)
+                @test deltas[1]["role"] == "assistant"
+                @test haskey(deltas[2], "content") && deltas[2]["content"] == "Hello"
+                @test haskey(deltas[3], "content") && deltas[3]["content"] == " World"
+                @test haskey(deltas[4], "content") && deltas[4]["content"] == "!"
+            finally
+                close(server)
+            end
+        end
+
+        # Test role and content field handling
+        @testset "Field Handling" begin
+            responses = [
+                Dict("role" => "assistant"),
+                Dict("content" => "Test"),
+                Dict(),  # Empty delta
+                Dict("content" => " Content")
+            ]
+
+            server = create_streaming_server(responses)
+            try
+                provider = OpenAIProvider(
+                    api_key="test",
+                    base_url="http://127.0.0.1:8444/v1"
+                )
+
+                response = create_chat(
+                    provider,
+                    "gpt-4",
+                    [Dict("role" => "user", "content" => "Test fields")];
+                    streamcallback = chunk -> nothing
+                )
+
+                # Test field handling
+                deltas = map(r -> r["choices"][1]["delta"], response.response)
+                @test haskey(deltas[1], "role")
+                @test !haskey(deltas[1], "content")
+                @test haskey(deltas[2], "content")
+                @test !haskey(deltas[2], "role")
+                @test isempty(deltas[3])
+                @test haskey(deltas[4], "content")
+            finally
+                close(server)
+            end
+        end
+
+        # Test empty response handling
+        @testset "Empty Response" begin
+            responses = [Dict("role" => "assistant")]  # Only role, no content
+
+            server = create_streaming_server(responses)
+            try
+                provider = OpenAIProvider(
+                    api_key="test",
+                    base_url="http://127.0.0.1:8444/v1"
+                )
+
+                response = create_chat(
+                    provider,
+                    "gpt-4",
+                    [Dict("role" => "user", "content" => "Test empty")];
+                    streamcallback = chunk -> nothing
+                )
+
+                # Test empty response handling
+                @test length(response.response) == 1
+                delta = response.response[1]["choices"][1]["delta"]
+                @test haskey(delta, "role")
+                @test !haskey(delta, "content")
+            finally
+                close(server)
+            end
+        end
+    end
 end
